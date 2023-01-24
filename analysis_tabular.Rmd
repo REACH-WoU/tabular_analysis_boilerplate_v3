@@ -1,0 +1,214 @@
+---
+title: "`r strings['dataset.name']`"
+subtitle: "Tabular Analysis"
+date: "`r strings['dataset.date']`"
+output: html_document
+---
+
+<style>
+.tocify-subheader {
+  font-size: 0.7em;
+}
+.tocify-item {
+  font-size: 0.85em;
+  padding-left: 25px;
+  text-indent: 0;
+}
+</style>
+
+```{r logo, echo=FALSE}
+htmltools::img(src = knitr::image_uri("resources/Logo_Reach_RGB_1.png"), 
+               alt = "REACH logo",
+               style = 'position:absolute; top:0; right:0; padding:0; margin:20; width:250px')
+```
+
+
+
+```{r setup, include=FALSE}
+  knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+  options(scipen = 999)
+  rm(list=ls()[!ls() %in% c("params", "strings")])
+  
+  source("src/init.R")
+
+##############################################################################################################
+
+  ## FIX A FEW THINGS TO ALIGN DATA & TOOL WITH ANALYSIS SCRIPT
+  
+  source("src/fix_bugged_names.R")
+  
+  ## ADDING WEIGHTS, OVERALL AND GROUPING VARIABLES 
+
+  source("src/format_dataset.R")  # <- additional indicators and grouping variables are added here 
+  
+  data.list$main <- data.list$main %>% 
+    mutate(overall = "overall",
+           weight = 1
+           
+         )
+  
+  # all additional columns from data that need to be included in srvyr designs (need to be present in all sheets):
+  special_vars <- c("overall", "weight", daf$admin) %>% unique  
+
+```
+
+```{r setup2, include=FALSE}
+
+  ## FINAL TOUCHUPS TO DAF, CONVERTING COLUMNS
+  ################################################################################
+  
+  ## a lookup tibble for variable/column names:
+  var_lookup <- tibble()
+  for (sheet in names(data.list)){
+    var_lookup <- rbind(var_lookup, tibble(variable = names(data.list[[sheet]]), datasheet = sheet)) %>% 
+      distinct(variable, .keep_all = T) %>% filter(str_detect(variable, "(/)|(___)", T))
+                                                       # ^ here, I am assuming that no one will put a variable in the DAF that contains '/' or '___', or starts with '_'
+        # also note that by using distinct here, if the same variable appears in multiple sheets, then by default the first sheet will be used (so: main usually)
+  }
+ # ADD DATASHEET COLUMN TO DAF
+  if(!"datasheet" %in% names(daf)) daf <- daf %>% left_join(var_lookup, by = "variable")
+  
+  missing_sheets <- daf %>% filter(is.na(datasheet)) %>% pull(variable)
+  if(length(missing_sheets) > 0) stop("These variables are missing from data: ", paste(missing_sheets))
+  rm(missing_sheets)
+
+ # CONVERT!
+  source("src/convert_cols_with_daf.R")
+
+
+  ## SRVYR DESIGNS
+  ##############################################################################
+
+  srvyr.designs  <- list()
+  
+  for(sheet in names(data.list)){
+    daf_vars <- daf %>% filter(var_type != "select_multiple" & datasheet == sheet) %>% pull(variable)
+  
+    daf_vars_sm <- daf %>% filter(var_type == "select_multiple" & datasheet == sheet) %>% pull(variable)
+    sm_vars_pattern <- paste0("^",paste0("(",daf_vars_sm,")", collapse = "|"))
+    
+    daf_disaggs <- daf %>% filter(!isna(disaggregations) & datasheet == sheet) %>% pull(disaggregations) %>% str_split(" *; *") %>% unlist %>% unique
+    daf_disaggs <- daf_disaggs[daf_disaggs!=""]
+    
+    survey_data <- data.list[[sheet]] %>% select(all_of(special_vars), all_of(daf_vars), all_of(daf_disaggs), matches(sm_vars_pattern))
+    
+    srvyr.designs[[sheet]] <- as_survey_design(survey_data, weights = NULL)
+    
+    rm(survey_data, daf_vars, daf_vars_sm, daf_disaggs)
+  }
+
+```
+# {.tabset}
+## Introduction
+### Feedback
+
+Feedback on improvements to this product can be done through reaching out to: ???
+
+### Sample size
+
+Total N = `r nrow(data.list$main)` successful interviews conducted
+
+```{r, results='asis'}
+sections <- daf %>% select(section) %>% distinct() %>% pull()
+
+# produce HTML output: go line by line of the analysis flan and generate each section or table
+
+for (i in sections){
+  add_to_html.section(i)
+  daf.section <- daf %>% filter(section == i)
+  
+  progress.bar.title <- as.character(Sys.time())
+  pb <- tkProgressBar(progress.bar.title, paste0("[", i, "] Number of entries executed"), 0, nrow(daf.section), 0, width = 500)
+  
+  for (r in 1:nrow(daf.section)){
+    setTkProgressBar(pb, r, progress.bar.title, paste0("[", i, "] Number of entries executed: ", r, " of ", nrow(daf.section)))
+    
+    # read entry from analysis flan
+    entry <- load_entry(daf.section[r,])
+    
+    add_to_html.title(entry)
+    cat(paste0("\n\nVariable name: <em><strong>", entry$variable),"</strong></em>")
+    cat(entry$comments)
+    
+    # get the appropriate data source:
+    srvyr.design <- srvyr.designs[[entry$datasheet]]
+    
+    # filter out NAs
+    if(entry$omit_na) srvyr.design <- srvyr.design %>% filter(!is.na(!!sym(entry$variable)))
+    
+    # check if any data for this variable is left at all:
+    if(nrow(srvyr.design) == 0) {
+      cat("\n\nNo data for this variable (all NA).\n")
+      next
+    }else{
+      if(!entry$omit_na){
+        cat(paste("\n\nIncluding NA values.\n"))
+      }else{
+        cat(paste("&emsp;|&emsp;",as_perc((nrow(srvyr.design))/nrow(data.list[[entry$datasheet]])),"of respondents answered this question.\n"))
+      }
+    }
+    
+    # group by admin:
+    srvyr.design <- srvyr.design %>% group_by(!!sym(entry$admin))
+    
+    # loop through each disagg.var
+    for (disagg.var in entry$disaggregate.variables) {
+      if(!isna(disagg.var)) cat("\nDisaggregated by:<em><strong>", paste0(disagg.var),"</strong></em>")
+      
+      res <- make_table(srvyr.design, entry, disagg.var) %>% ungroup %>% select(-any_of("overall"))
+      # add overall
+      if(entry$admin != "overall"){
+        entry.ovrl <- entry
+        entry.ovrl$admin <- "overall"
+        if(!"overall" %in% (srvyr.design %>% variable.names)) srvyr.design <- srvyr.design %>% mutate(overall = "overall")
+        res.overall <- make_table(srvyr.design %>% ungroup %>% group_by(overall),
+                                        entry.ovrl, disagg.var)  %>% 
+          mutate(!!sym(entry$admin) := "overall") %>% 
+          ungroup %>% select(-any_of("overall"))
+        res <- res %>% bind_rows(res.overall) %>% distinct
+      }
+      # save the xlsx
+      xlsx_name <- paste0(entry$xlsx_name, ifelse(isna(disagg.var), "", paste0("_by_", disagg.var)))
+      write_xlsx(res, paste0(params["combine_folder"],"/",xlsx_name,".xlsx"))
+    
+      subch(datatable(res, option = tableFormat))
+    }
+    
+  }
+  close(pb)
+}
+
+```
+
+
+```{r message=TRUE, warning=FALSE, include=FALSE}
+
+## output XLSX files
+
+file.list <- list.files(path = params['combine_folder'], pattern = "*.xlsx")
+file.list <- setNames(file.list, paste0(params['combine_folder'], file.list))
+df <- lapply(names(file.list), read_excel)
+names(df) <- str_remove(file.list, ".xlsx")
+
+sorted_df <- df
+
+save.dfs(sorted_df, paste0("output/", strings['dataset.name.short'], "_combined_analysis_toc_", strings['out_date'], ".xlsx"))
+
+for (i in 1:length(names(sorted_df))){
+  if (nchar(names(sorted_df)[i]) > 31){
+    names(sorted_df)[i] <- str_trunc(names(sorted_df)[i], 28)
+    names(sorted_df)[i] <- paste0(names(sorted_df)[i],i)
+  } else{
+    names(sorted_df) <- names(sorted_df)
+  }
+}
+combined_xlsx_filename <- paste0("output/", strings['dataset.name.short'], "_combined_analysis_by_tab_", strings['out_date'], ".xlsx")
+write.xlsx(sorted_df, file = combined_xlsx_filename)
+
+cat("\n\n> xlsx files combined and saved to", combined_xlsx_filename)
+file.remove(names(file.list))
+cat("\n\n> xlsx files removed from", params['combine_folder'] ,"folder\n All done!\n")
+
+```
+
+
