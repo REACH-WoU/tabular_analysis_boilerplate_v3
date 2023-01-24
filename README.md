@@ -1,4 +1,4 @@
-# tabular_analysis_boilerplate_v2
+# tabular_analysis_boilerplate_v3
 
 Welcome to the repository for v2 of tabular analysis: now with rewritten backend!
 
