@@ -1,18 +1,15 @@
-# setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
 
 ## SET FILENAMES AND OTHER STRINGS  --------------------------------------------
-
 strings <- c(
-
-  dataset.name = "???",      # provide a full name for the title of output documents (e.g. "[POL] Post-Distribution Monitoring")
-  dataset.name.short = "???",   # provide a short name for filenames of output documents (e.g. "POL_PDM")
-  dataset.date = "???",       # this string is only used for creating titles for output documents
+  dataset.name = "[UKR] JMMI Ukraine",      # provide a full name for the title of output documents (e.g. "[POL] Post-Distribution Monitoring")
+  dataset.name.short = "JMMI UKR Customers Region",   # provide a short name for filenames of output documents (e.g. "POL_PDM")
+  dataset.date = "2023",       # this string is only used for creating titles for output documents
   out_date = stringr::str_sub(stringr::str_remove_all(Sys.Date(), '-'), 3),      # this one is appended to the end of filenames
-  filename.data = "data/???.xlsx",      # the filename of your data for analysis
-  filename.tool = "resources/???.xlsx",      # filename of your kobo tool
-  filename.daf.tabular = "resources/???.xlsx",      # filename of your DAF
-  
+  filename.data = "data/UKR2203JMMI_Customers_R15_clean_data_07JUN2023.xlsx",      # the filename of your data for analysis
+  filename.tool = "resources/UKR2203_JMMI_Questionnaire_Customers_R15_07JUN2023_SB.xlsx",      # filename of your kobo tool
+  filename.daf.tabular = "resources/DAF_region.xlsx"     # filename of your DAF
 )
 
 
@@ -23,10 +20,16 @@ params  <- c(
     combine_folder = "temp/combine/"
 )
 
+source("src/init.R")
+
+## Ananlysis of numeric variables  --------------------------------------------
+
+#source("JMMI_analysis_numeric.R")
+
 ## TABULAR  -------------------------------------------------------------------
 
-rmarkdown::render('analysis_tabular.Rmd',
-                  output_file = paste0("output/", strings['dataset.name.short'], "_Tabular_Analysis_", strings['out_date'],".html"))
+rmarkdown::render('analysis_tabular_region.Rmd',
+                  output_file = paste0("output/", strings['dataset.name.short'], "_Tabular_Analysis_Region", strings['out_date'],".html"))
 cat("\n> tabular analysis completed!")
 
 # ------------------------------------------------------------------------------

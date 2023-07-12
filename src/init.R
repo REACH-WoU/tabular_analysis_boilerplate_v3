@@ -3,7 +3,7 @@
 # loading all packages, functions and the Kobo tool
 if (!require("pacman")) install.packages("pacman")
 pacman::p_load(tidyverse, readxl, writexl, openxlsx, randomcoloR, sf, anytime, DT,
-               cluster, survey, srvyr, knitr, webshot, docstring, tcltk, scales)
+               cluster, survey, srvyr, knitr, webshot, docstring, tcltk, scales, qlcMatrix, stringr)
 
 source("src/utils/utils_analysis.R")
 source("src/utils/misc_utils.R")
@@ -99,6 +99,16 @@ if(max(col_counts$num_cols) != col_counts[col_counts$sheet == "main",]$num_cols)
 
 rm(sheet_names, tool_datasheets, col_counts)
 
+#####
+# Load the list of p-code <> English name
+codes <- tool.choices %>%
+  filter(startsWith(name,"UA"))
+
+recode <- codes %>%
+  rename("to" = "label::English",
+         "from" = "name") %>%
+  subset(select = -list_name)
+
 cat("\n> ...Done.\n")
 
 
@@ -158,19 +168,12 @@ rm(valid.func.params, necessary.dap.cols, are_na, daf_col)
 
 ## upgrade DAF with additional columns
 ## -----------------------------------------------------------------------------
-
-list_name <- tool.survey %>% 
+listname <- tool.survey %>% 
   select(name,list_name)
-
-variables_not_in_tool <- daf %>% filter(!variable %in% tool.survey$name) %>% pull(variable) %>% unique
-list_variables_not_in_tool <- list()
-for (i in variables_not_in_tool){
-  input <- svDialogs::dlgInput(paste0("Enter the func for the ", i, " variable not existing in the tool:"),"select_one OR count OR mean")
-  list_variables_not_in_tool[[i]] <- as.character(input$res)
-}
 daf <- suppressWarnings(daf %>% mutate(
-  var_type = ifelse(!variable %in% tool.survey$name,list_variables_not_in_tool[variable],get.type(variable))) %>% 
-    left_join(list_name, by = c("variable"="name")))
+  var_type = ifelse(!variable %in% tool.survey$name, "select_one",get.type(variable))) %>% 
+    left_join(listname, by = c("variable" = "name")))
+
 
 ## adding missing legacy/optional columns and filling them with default values (NA or something else)
 additional.daf.cols <- c(
@@ -190,9 +193,9 @@ if(!"func" %in% names(daf)) {
   cat("\n> Your DAF is missing the 'func' column - default functions will be taken by looking up q.type from tool.survey\n")
   daf <- daf %>% mutate(func = ifelse(var_type %in% c("integer", "numeric"), "numeric",
                                       ifelse(var_type == "text", "count", var_type)))
-}else{
-  daf <- daf %>% mutate(func = ifelse(func %in% c("integer", "numeric","mean","median"), "numeric", func))
-}
+}#else{            #### OS commented this because don't want to display all the numbers if it is just median
+#  daf <- daf %>% mutate(func = ifelse(func %in% c("integer", "numeric","mean","median"), "numeric", func))
+#}
 
 ## admin - strata if strata in names, otherwise overall
 admin_default <- ifelse("strata" %in% names(data.list$main), "strata", "overall")
