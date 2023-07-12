@@ -11,7 +11,7 @@
 
 
 # Load the list of oblast <> region
-regions <- read.xlsx("resources//macroregions.xlsx")
+regions <- read.xlsx("resources/Retailers/macroregions.xlsx")
 
 ##################################### Formating to numeric #############################################
 
@@ -64,11 +64,17 @@ geography <- data.list$main %>%
 
 #Calculating medians
 
-medians_hromada <- raw_medians(data.list$main,final_price_cols,"a7_current_hromada",c( "macroregion", "a5_current_oblast", "a6_current_raion")) 
-medians_raion <- raw_medians(medians_hromada,final_price_cols,"a6_current_raion", c("macroregion", "a5_current_oblast"))
-medians_oblast <- raw_medians(medians_raion,final_price_cols,"a5_current_oblast", "macroregion")
-medians_region <- raw_medians(medians_oblast,final_price_cols,"macroregion")
+medians_hromada <- raw_medians(data.list$main,final_price_cols,"a7_current_hromada",c( "macroregion", "a5_current_oblast", "a6_current_raion"))
+#medians_raion_test <- raw_medians(data.list$main,final_price_cols,"a6_current_raion", c("macroregion", "a5_current_oblast"))
+medians_raion <- raw_medians(filter(medians_hromada, stats == "median"),final_price_cols,"a6_current_raion", c("macroregion", "a5_current_oblast"))
+#medians_oblast_test <- raw_medians(filter(medians_raion_test, stats == "median"),final_price_cols,"a5_current_oblast", "macroregion")
+#medians_oblast_test2 <- raw_medians(data.list$main,final_price_cols,"a5_current_oblast", "macroregion")
+medians_oblast <- raw_medians(filter(medians_raion, stats == "median"),final_price_cols,"a5_current_oblast", "macroregion")
+#medians_region_test <- raw_medians(filter(medians_oblast_test2, stats == "median"),final_price_cols,"macroregion")
+#medians_region_test2 <- raw_medians(data.list$main,final_price_cols,"macroregion")
+medians_region <- raw_medians(filter(medians_oblast, stats == "median"),final_price_cols,"macroregion")
 medians_national <- descriptive_stats(rename(filter(medians_region, stats == "median"), "national" = "stats"),"national",final_price_cols)
+#medians_national_test <- descriptive_stats(rename(filter(medians_region_test2, stats == "median"), "national" = "stats"),"national",final_price_cols)
 #prices_national <- medians_national %>%
 #  ungroup() %>%
 #  select(-national)
@@ -122,11 +128,12 @@ medians_national <- medians_national %>%
 
 # Putting all together in one dataset
 df_prices <- list("medians_hromada" = medians_hromada, 
-            "medians_raion" = medians_raion, 
-            "medians_oblast" = medians_oblast, 
-            "medians_region" = medians_region, 
-            "medians_national" = medians_national)
- 
+                  "medians_raion" = medians_raion, 
+                  "medians_oblast" = medians_oblast, 
+                  "medians_region" = medians_region, 
+                  "medians_national" = medians_national)
+
+
 # Recoding p-codes with names
 
 recode$col <- ".global"
@@ -134,14 +141,76 @@ recode$col <- ".global"
 for (i in 1:length(df_prices)){
   df_prices[[i]] <- df_prices[[i]] %>%
     matchmaker::match_df(dictionary = recode, from = "from",               
-                        to = "to",                   
-                        by = "col")
+                         to = "to",                   
+                         by = "col") %>%
+    filter(!is.na(colnames(df_prices[[i]])[1]))
 }
 
+
 # Writing down to the file 
-save.dfs(df_prices, paste0("output/", strings['dataset.name.short'], "Prices_combined_analysis_", strings['out_date'], ".xlsx"))
+save.dfs(df_prices, paste0("output/Retailers/", "JMMI UKR Retailers Prices_combined_analysis_", strings['out_date'], ".xlsx"))
 
 
+###--------Just for a test----------
+#prices_hromada <- medians_hromada %>%
+#  filter(stats == "median")
+#prices_raion_test <- medians_raion_test %>%
+#  filter(stats == "median")
+#prices_oblast_test <- medians_oblast_test %>%
+#  filter(stats == "median")
+#prices_region_test <- medians_region_test %>%
+#  filter(stats == "median")
+#
+## Creating a dataset with all region medians to impute missing values on oblast level
+#prices_region_test_to_update <- prices_oblast_test[,c("macroregion", "a5_current_oblast")] %>%     
+#  left_join(prices_region_test, by = "macroregion")          
+## Imputing missing values in prices dataset (only medians)
+#prices_oblast_test <- prices_oblast_test %>%                                                  
+#  rows_patch(prices_region_test_to_update, by = c("macroregion","a5_current_oblast","stats"))
+## Imputing misiing values in full dataset and calculating the basket
+#medians_oblast_test <- medians_oblast_test %>%
+#  rows_patch(prices_oblast_test, by = c("macroregion","a5_current_oblast","stats")) %>%
+#  basket(food_cols,nfi_cols)
+#
+#prices_oblast_test_to_update <- prices_raion_test[,c("a5_current_oblast", "a6_current_raion")] %>%
+#  left_join(prices_oblast_test, by = "a5_current_oblast")
+#prices_raion_test <- prices_raion_test %>%
+#  rows_patch(prices_oblast_test_to_update, by = "a6_current_raion")
+#medians_raion_test <- medians_raion_test %>%
+#  rows_patch(prices_raion_test, by = c("a6_current_raion","stats")) %>%
+#  basket(food_cols,nfi_cols)
+#
+#prices_raion_test_to_update <- prices_hromada[,c("a6_current_raion", "a7_current_hromada")] %>%
+#  left_join(prices_raion_test, by = "a6_current_raion")
+#prices_hromada <- prices_hromada %>%
+#  rows_patch(prices_raion_test_to_update, by = "a7_current_hromada")
+#medians_hromada <- medians_hromada %>%
+#  rows_patch(prices_hromada, by = c("a7_current_hromada","stats")) %>%
+#  basket(food_cols,nfi_cols)
+#
+#medians_region_test <- medians_region_test %>%
+#  basket(food_cols,nfi_cols)
+#
+#medians_national_test <- medians_national_test %>% 
+#  basket(food_cols,nfi_cols)
+#
+#df_prices_test <- list("medians_hromada" = medians_hromada, 
+#                       "medians_raion_test" = medians_raion_test, 
+#                       "medians_oblast_test" = medians_oblast_test, 
+#                       "medians_region_test" = medians_region_test, 
+#                       "medians_national_test" = medians_national_test)
+#
+#for (i in 1:length(df_prices_test)){
+#  df_prices_test[[i]] <- df_prices_test[[i]] %>%
+#    matchmaker::match_df(dictionary = recode, from = "from",               
+#                         to = "to",                   
+#                         by = "col") %>%
+#    filter(!is.na(colnames(df_prices_test[[i]])[1]))
+#}
+#
+## Writing down to the file 
+#save.dfs(df_prices_test, paste0("output/", "JMMI UKR Retailers Prices_combined_analysis_TEST", strings['out_date'], ".xlsx"), "_prices")
+#
 ##################################### Resupply - Retailers #####################################
 
 resupply_cols <- data.list$main %>%
@@ -151,9 +220,9 @@ resupply_cols <- data.list$main %>%
 #Calculating medians
 
 resupply_medians_hromada <- raw_medians(data.list$main,resupply_cols,"a7_current_hromada",c( "macroregion", "a5_current_oblast", "a6_current_raion")) 
-resupply_medians_raion <- raw_medians(resupply_medians_hromada,resupply_cols,"a6_current_raion", c("macroregion", "a5_current_oblast"))
-resupply_medians_oblast <- raw_medians(resupply_medians_raion,resupply_cols,"a5_current_oblast", "macroregion")
-resupply_medians_region <- raw_medians(resupply_medians_oblast,resupply_cols,"macroregion")
+resupply_medians_raion <- raw_medians(filter(resupply_medians_hromada,stats=="median"),resupply_cols,"a6_current_raion", c("macroregion", "a5_current_oblast"))
+resupply_medians_oblast <- raw_medians(filter(resupply_medians_raion,stats=="median"),resupply_cols,"a5_current_oblast", "macroregion")
+resupply_medians_region <- raw_medians(filter(resupply_medians_oblast,stats=="median"),resupply_cols,"macroregion")
 resupply_medians_national <- descriptive_stats(rename(filter(resupply_medians_region, stats == "median"), "national" = "stats"),"national",resupply_cols)
 #prices_national <- medians_national %>%
 #  ungroup() %>%
@@ -200,21 +269,22 @@ resupply_medians_hromada <- resupply_medians_hromada %>%
 
 # Putting all together in one dataset
 df_resupply <- list("resupply_medians_hromada" = resupply_medians_hromada, 
-            "resupply_medians_raion" = resupply_medians_raion, 
-            "resupply_medians_oblast" = resupply_medians_oblast, 
-            "resupply_medians_region" = resupply_medians_region, 
-            "resupply_medians_national" = resupply_medians_national)
+                    "resupply_medians_raion" = resupply_medians_raion, 
+                    "resupply_medians_oblast" = resupply_medians_oblast, 
+                    "resupply_medians_region" = resupply_medians_region, 
+                    "resupply_medians_national" = resupply_medians_national)
 
 # Recoding p-codes with names
 for (i in 1:length(df_resupply)){
   df_resupply[[i]] <- df_resupply[[i]] %>%
     matchmaker::match_df(dictionary = recode, from = "from",               
                          to = "to",                   
-                         by = "col")
+                         by = "col") %>%
+    filter(!is.na(colnames(df_resupply[[i]])[1]))
 }
 
 # Writing down to the file 
-save.dfs(df_resupply, paste0("output/", strings['dataset.name.short'], "_combined_analysis_resupply_", strings['out_date'], ".xlsx"))
+save.dfs(df_resupply, paste0("output/Retailers/", "JMMI UKR Retailers Resupply_combined_analysis_", strings['out_date'], ".xlsx"))
 
 
 
@@ -235,17 +305,17 @@ recode_stock$to <- c(1, 2.5, 4.5, 6.5, 11, 18, 26.5, 31, 999)
 
 df_stock <- data.list$main %>%
   select(c(location_cols,stock_cols)) %>%
-    matchmaker::match_df(dictionary = recode_stock, from = "from",               
-                         to = "to",                   
-                         by = "col") %>%
+  matchmaker::match_df(dictionary = recode_stock, from = "from",               
+                       to = "to",                   
+                       by = "col") %>%
   replace_with_na_all(condition = ~.x == "999") %>%
   mutate_at(stock_cols,as.numeric)
 
 
 stock_medians_hromada <- raw_medians(df_stock,stock_cols,"a7_current_hromada",c( "macroregion", "a5_current_oblast", "a6_current_raion")) 
-stock_medians_raion <- raw_medians(stock_medians_hromada,stock_cols,"a6_current_raion", c("macroregion", "a5_current_oblast"))
-stock_medians_oblast <- raw_medians(stock_medians_raion,stock_cols,"a5_current_oblast", "macroregion")
-stock_medians_region <- raw_medians(stock_medians_oblast,stock_cols,"macroregion")
+stock_medians_raion <- raw_medians(filter(stock_medians_hromada,stats=="medians"),stock_cols,"a6_current_raion", c("macroregion", "a5_current_oblast"))
+stock_medians_oblast <- raw_medians(filter(stock_medians_raion,stats=="median"),stock_cols,"a5_current_oblast", "macroregion")
+stock_medians_region <- raw_medians(filter(stock_medians_oblast,stats=="median"),stock_cols,"macroregion")
 stock_medians_national <- descriptive_stats(rename(filter(stock_medians_region, stats == "median"), "national" = "stats"),"national",stock_cols)
 #prices_national <- medians_national %>%
 #  ungroup() %>%
@@ -292,10 +362,10 @@ stock_medians_hromada <- stock_medians_hromada %>%
 
 # Putting all together in one dataset
 df_stock_combined <- list("stock_medians_hromada" = stock_medians_hromada, 
-                    "stock_medians_raion" = stock_medians_raion, 
-                    "stock_medians_oblast" = stock_medians_oblast, 
-                    "stock_medians_region" = stock_medians_region, 
-                    "stock_medians_national" = stock_medians_national)
+                          "stock_medians_raion" = stock_medians_raion, 
+                          "stock_medians_oblast" = stock_medians_oblast, 
+                          "stock_medians_region" = stock_medians_region, 
+                          "stock_medians_national" = stock_medians_national)
 
 transform_stock <- function(data){
   cat2 <- character()                       
@@ -321,5 +391,38 @@ for (i in 1:length(df_stock_combined)){
 
 
 # Writing down to the file 
-save.dfs(df_stock_combined, paste0("output/", strings['dataset.name.short'], "_combined_analysis_stock_", strings['out_date'], ".xlsx"))
+save.dfs(df_stock_combined, paste0("output/Retailers/", "JMMI UKR Retailers Stock_combined_analysis_", strings['out_date'], ".xlsx"))
 
+##################################### Current Operating - Retailers #####################################
+# 
+# operating_cols <- c("w1_perc_current_operating")
+# 
+# #Calculating medians
+# 
+# operating_medians_hromada <- raw_medians(data.list$main,operating_cols,"a7_current_hromada",c( "macroregion", "a5_current_oblast", "a6_current_raion"),num_samples = TRUE)
+# operating_medians_raion <- raw_medians(filter(operating_medians_hromada,stats=="median"),operating_cols,"a6_current_raion", c("macroregion", "a5_current_oblast"),num_samples = TRUE)
+# operating_medians_oblast <- raw_medians(filter(operating_medians_raion,stats=="median"),operating_cols,"a5_current_oblast", "macroregion",num_samples = TRUE)
+# operating_medians_region <- raw_medians(filter(operating_medians_oblast,stats=="median"),operating_cols,"macroregion",num_samples = TRUE)
+# operating_medians_national <- descriptive_stats(rename(filter(operating_medians_region, stats == "median"), "national" = "stats"),"national",operating_cols)
+# #prices_national <- medians_national %>%
+# #  ungroup() %>%
+# #  select(-national)
+# 
+# # Putting all together in one dataset
+# df_operating <- list("operating_medians_hromada" = operating_medians_hromada,
+#                     "operating_medians_raion" = operating_medians_raion,
+#                     "operating_medians_oblast" = operating_medians_oblast,
+#                     "operating_medians_region" = operating_medians_region,
+#                     "operating_medians_national" = operating_medians_national)
+# 
+# # Recoding p-codes with names
+# for (i in 1:length(df_operating)){
+#   df_operating[[i]] <- df_operating[[i]] %>%
+#     matchmaker::match_df(dictionary = recode, from = "from",
+#                          to = "to",
+#                          by = "col") %>%
+#     filter(!is.na(colnames(df_operating[[i]])[1]))
+# }
+# 
+# # Writing down to the file
+# save.dfs(df_operating, paste0("output/", "JMMI UKR Retailers Current_Operating_combined_analysis_", strings['out_date'], ".xlsx"), "_operating")

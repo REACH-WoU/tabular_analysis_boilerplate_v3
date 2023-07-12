@@ -119,7 +119,7 @@ Total N = `r nrow(data.list$main)` successful interviews conducted
 sections <- daf %>% select(section) %>% distinct() %>% pull()
 
 # produce HTML output: go line by line of the analysis flan and generate each section or table
-
+if (JMMI_variable == "Customers") {
 for (i in sections){
   add_to_html.section(i)
   daf.section <- daf %>% filter(section == i)
@@ -254,6 +254,94 @@ for (i in sections){
     
   }
   close(pb)
+}
+}
+
+if (JMMI_variable == "Retailers") {
+  for (i in sections){
+  add_to_html.section(i)
+  daf.section <- daf %>% filter(section == i)
+  
+  progress.bar.title <- as.character(Sys.time())
+  pb <- tkProgressBar(progress.bar.title, paste0("[", i, "] Number of entries executed"), 0, nrow(daf.section), 0, width = 500)
+  
+  for (r in 1:nrow(daf.section)){
+    setTkProgressBar(pb, r, progress.bar.title, paste0("[", i, "] Number of entries executed: ", r, " of ", nrow(daf.section)))
+    
+    # read entry from analysis flan
+    entry <- load_entry(daf.section[r,])
+    
+    add_to_html.title(entry)
+    cat(paste0("\n\nVariable name: <em><strong>", entry$variable),"</strong></em>")
+    cat(entry$comments)
+    
+    # get the appropriate data source:
+    srvyr.design <- srvyr.designs[[entry$datasheet]]
+    
+    # filter out NAs
+    if(entry$omit_na) srvyr.design <- srvyr.design %>% filter(!is.na(!!sym(entry$variable)))
+    
+    # check if any data for this variable is left at all:
+    if(nrow(srvyr.design) == 0) {
+      cat("\n\nNo data for this variable (all NA).\n")
+      next
+    }else{
+      if(!entry$omit_na){
+        cat(paste("\n\nIncluding NA values.\n"))
+      }else{
+        cat(paste("&emsp;|&emsp;",as_perc((nrow(srvyr.design))/nrow(data.list[[entry$datasheet]])),"of respondents answered this question.\n"))
+      }
+    }
+    
+    # group by admin:
+    srvyr.design <- srvyr.design %>% group_by(!!sym(entry$admin))
+    
+    # loop through each disagg.var
+    for (disagg.var in entry$disaggregate.variables) {
+      
+      if(!isna(disagg.var)) cat("\nDisaggregated by:<em><strong>", paste0(disagg.var),"</strong></em>")
+      
+      res <- make_table(srvyr.design, entry, disagg.var) %>% ungroup %>% select(-any_of("overall"))
+      
+      # add overall
+      if(entry$admin != "overall"){
+        entry.ovrl <- entry
+        entry.ovrl$admin <- "overall"
+        if(!"overall" %in% (srvyr.design %>% variable.names)) srvyr.design <- srvyr.design %>% mutate(overall = "overall")
+        res.overall <- make_table(srvyr.design %>% ungroup %>% group_by(overall),
+                                        entry.ovrl, disagg.var)  %>% 
+          mutate(!!sym(entry$admin) := "overall") %>% 
+          ungroup %>% select(-any_of("overall"))
+        res <- res %>% bind_rows(res.overall) %>% distinct
+      }
+      
+          # add p-codes
+        if (entry$admin == "strata"){
+          recode$col <- "hromada_name"
+          res$hromada_name <- res$strata
+          res <- res %>% matchmaker::match_df(dictionary = recode, from = "from",               
+                          to = "to",                   
+                          by = "col") %>%
+          relocate(hromada_name, .after = strata)
+          res <- res %>%
+            rename("hromada" = "strata") %>%
+            rename("strata" = "hromada_name") %>%
+            mutate(raion = substr(hromada,1,6), .before = hromada) %>%
+              mutate(oblast = substr(raion,1,4), .before = raion)
+        }
+      
+      # save the xlsx
+      xlsx_name <- paste0(entry$xlsx_name, ifelse(isna(disagg.var), "", paste0("_by_", disagg.var)))
+      write_xlsx(res, paste0(params["combine_folder"],"/",xlsx_name,".xlsx"))
+    
+      subch(datatable(res, options = tableFormat))
+    }
+    
+  }
+  close(pb)
+}
+
+  
 }
 
 ```
