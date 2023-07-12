@@ -28,8 +28,12 @@ htmltools::img(src = knitr::image_uri("resources/Logo_Reach_RGB_1.png"),
   knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
   options(scipen = 999)
   rm(list=ls()[!ls() %in% c("params", "strings")])
+  
+ ##Change variable to Retailers or Customers
+JMMI_variable <- c("Customers")
+
   source("src/init.R")
-  sampling <- read_excel("resources/sample.xlsx")
+  sampling <- read_excel("resources/Customers/sample.xlsx")
   a <- data.list$main %>% filter(!a6_current_raion %in%sampling$strata) %>% pull(a6_current_raion)
 ##############################################################################################################
 
@@ -263,7 +267,7 @@ names(df) <- str_remove(file.list, ".xlsx")
 
 sorted_df <- df
 
-save.dfs(sorted_df, paste0("output/", strings['dataset.name.short'], "_combined_analysis_toc_", strings['out_date'], ".xlsx"))
+save.dfs(sorted_df, paste0("output/Customers/", strings['dataset.name.short'], "_combined_analysis_toc_", strings['out_date'], ".xlsx"))
 
 for (i in 1:length(names(sorted_df))){
   if (nchar(names(sorted_df)[i]) > 31){
@@ -273,7 +277,7 @@ for (i in 1:length(names(sorted_df))){
     names(sorted_df) <- names(sorted_df)
   }
 }
-combined_xlsx_filename <- paste0("output/", strings['dataset.name.short'], "_combined_analysis_by_tab_", strings['out_date'], ".xlsx")
+combined_xlsx_filename <- paste0("output/Customers/", strings['dataset.name.short'], "_combined_analysis_by_tab_", strings['out_date'], ".xlsx")
 write.xlsx(sorted_df, file = combined_xlsx_filename)
 
 cat("\n\n> xlsx files combined and saved to", combined_xlsx_filename)
