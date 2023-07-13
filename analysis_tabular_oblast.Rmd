@@ -33,7 +33,7 @@ htmltools::img(src = knitr::image_uri("resources/Logo_Reach_RGB_1.png"),
 JMMI_variable <- c("Customers")
 
   source("src/init.R")
-  sampling <- read_excel("resources/Customers/sample.xlsx")
+  sampling <- read_excel(paste0("resources/", JMMI_variable, "/sample.xlsx")) ##Change folder to Retailers or Customers
   a <- data.list$main %>% filter(!a6_current_raion %in%sampling$strata) %>% pull(a6_current_raion)
 ##############################################################################################################
 
@@ -129,6 +129,7 @@ Total N = `r nrow(data.list$main)` successful interviews conducted
 ```{r, results='asis'}
 sections <- daf %>% select(section) %>% distinct() %>% pull()
 
+if (JMMI_variable == "Customers") {
 # produce HTML output: go line by line of the analysis flan and generate each section or table
 
 for (i in sections){
@@ -261,6 +262,94 @@ for (i in sections){
   }
   close(pb)
 }
+  
+}
+
+
+if (JMMI_variable == "Retailers") {
+  
+  for (i in sections){
+  add_to_html.section(i)
+  daf.section <- daf %>% filter(section == i)
+  
+  progress.bar.title <- as.character(Sys.time())
+  pb <- tkProgressBar(progress.bar.title, paste0("[", i, "] Number of entries executed"), 0, nrow(daf.section), 0, width = 500)
+  
+  for (r in 1:nrow(daf.section)){
+    setTkProgressBar(pb, r, progress.bar.title, paste0("[", i, "] Number of entries executed: ", r, " of ", nrow(daf.section)))
+    
+    # read entry from analysis flan
+    entry <- load_entry(daf.section[r,])
+    
+    add_to_html.title(entry)
+    cat(paste0("\n\nVariable name: <em><strong>", entry$variable),"</strong></em>")
+    cat(entry$comments)
+    
+    # get the appropriate data source:
+    srvyr.design <- srvyr.designs[[entry$datasheet]]
+    
+    # filter out NAs
+    if(entry$omit_na) srvyr.design <- srvyr.design %>% filter(!is.na(!!sym(entry$variable)))
+    
+    # check if any data for this variable is left at all:
+    if(nrow(srvyr.design) == 0) {
+      cat("\n\nNo data for this variable (all NA).\n")
+      next
+    }else{
+      if(!entry$omit_na){
+        cat(paste("\n\nIncluding NA values.\n"))
+      }else{
+        cat(paste("&emsp;|&emsp;",as_perc((nrow(srvyr.design))/nrow(data.list[[entry$datasheet]])),"of respondents answered this question.\n"))
+      }
+    }
+    
+    # group by admin:
+    srvyr.design <- srvyr.design %>% group_by(!!sym(entry$admin))
+    
+    # loop through each disagg.var
+    for (disagg.var in entry$disaggregate.variables) {
+      
+      if(!isna(disagg.var)) cat("\nDisaggregated by:<em><strong>", paste0(disagg.var),"</strong></em>")
+      
+      res <- make_table(srvyr.design, entry, disagg.var) %>% ungroup %>% select(-any_of("overall"))
+      
+      # add overall
+      if(entry$admin != "overall"){
+        entry.ovrl <- entry
+        entry.ovrl$admin <- "overall"
+        if(!"overall" %in% (srvyr.design %>% variable.names)) srvyr.design <- srvyr.design %>% mutate(overall = "overall")
+        res.overall <- make_table(srvyr.design %>% ungroup %>% group_by(overall),
+                                        entry.ovrl, disagg.var)  %>% 
+          mutate(!!sym(entry$admin) := "overall") %>% 
+          ungroup %>% select(-any_of("overall"))
+        res <- res %>% bind_rows(res.overall) %>% distinct
+      }
+      
+        # add p-codes
+          if (entry$admin == "strata"){
+            recode$col <- "oblast_name"
+            res$oblast_name <- res$strata
+            res <- res %>% matchmaker::match_df(dictionary = recode, from = "from",               
+                            to = "to",                   
+                            by = "col") %>%
+            relocate(oblast_name, .after = strata)
+            res <- res %>%
+              rename("oblast" = "strata") %>%
+              rename("strata" = "oblast_name")
+            }
+      
+      # save the xlsx
+      xlsx_name <- paste0(entry$xlsx_name, ifelse(isna(disagg.var), "", paste0("_by_", disagg.var)))
+      write_xlsx(res, paste0(params["combine_folder"],"/",xlsx_name,".xlsx"))
+    
+      subch(datatable(res, options = tableFormat))
+    }
+    
+  }
+  close(pb)
+}
+
+}
 
 ```
 
@@ -276,7 +365,7 @@ names(df) <- str_remove(file.list, ".xlsx")
 
 sorted_df <- df
 
-save.dfs(sorted_df, paste0("output/Customers/", strings['dataset.name.short'], "_combined_analysis_toc_", strings['out_date'], ".xlsx"))
+save.dfs(sorted_df, paste0("output/", JMMI_variable, "/", strings['dataset.name.short'], "_combined_analysis_toc_", strings['out_date'], ".xlsx"))
 
 for (i in 1:length(names(sorted_df))){
   if (nchar(names(sorted_df)[i]) > 31){
@@ -286,7 +375,7 @@ for (i in 1:length(names(sorted_df))){
     names(sorted_df) <- names(sorted_df)
   }
 }
-combined_xlsx_filename <- paste0("output/Customers/", strings['dataset.name.short'], "_combined_analysis_by_tab_", strings['out_date'], ".xlsx")
+combined_xlsx_filename <- paste0("output/", JMMI_variable, "/", strings['dataset.name.short'], "_combined_analysis_by_tab_", strings['out_date'], ".xlsx")
 write.xlsx(sorted_df, file = combined_xlsx_filename)
 
 cat("\n\n> xlsx files combined and saved to", combined_xlsx_filename)
