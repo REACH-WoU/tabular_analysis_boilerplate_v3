@@ -403,14 +403,18 @@ operating_cols <- operating_cols %>% select(macroregion, everything())
 
 # Replace values to the numbers
 
-operating_cols$w1_perc_current_operating <- gsub("_", "", operating_cols$w1_perc_current_operating)
-operating_cols$w1_perc_current_operating <- gsub("025", "12.500", operating_cols$w1_perc_current_operating)
-operating_cols$w1_perc_current_operating <- gsub("25", "12.500", operating_cols$w1_perc_current_operating)
-operating_cols$w1_perc_current_operating <- gsub("2550", "37.5", operating_cols$w1_perc_current_operating)
-operating_cols$w1_perc_current_operating <- gsub("5075", "62.5", operating_cols$w1_perc_current_operating)
-operating_cols$w1_perc_current_operating <- gsub("75100", "87.5", operating_cols$w1_perc_current_operating)
-operating_cols$w1_perc_current_operating <- gsub("100", "87.5", operating_cols$w1_perc_current_operating)
-operating_cols$w1_perc_current_operating <- as.numeric(operating_cols$w1_perc_current_operating)
+
+replace_values_in_w1 <- function(x) {
+  x <- gsub("_", "", x)
+  x <- ifelse(x == "025" | x == "25", "12.500", x)
+  x <- ifelse(x == "2550", "37.500", x)
+  x <- ifelse(x == "5075", "62.500", x)
+  x <- ifelse(x == "75100" | x == "100" | x == "80", "87.500", x)
+  as.numeric(x)
+}
+
+# Apply the function to the column
+operating_cols$w1_perc_current_operating <- replace_values_in_w1(operating_cols$w1_perc_current_operating)
 # Calculate mean per hromada
 
 operating_hromada <- operating_cols %>% group_by(macroregion,a5_current_oblast,a6_current_raion, a7_current_hromada) %>% 
