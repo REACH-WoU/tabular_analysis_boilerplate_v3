@@ -4,7 +4,7 @@
 ### PURPOSE:      Use analysed data and output files
 ### INPUT:        JMMI dataset
 ### OUTPUT:       XLSX
-### LAST MODIFY:  Oleksandr Soforonov 
+### LAST MODIFY:  Svitlana Bozhenko
 ###
 ################################################################################
 # 
@@ -392,37 +392,87 @@ for (i in 1:length(df_stock_combined)){
 
 # Writing down to the file 
 save.dfs(df_stock_combined, paste0("output/Retailers/", "JMMI UKR Retailers Stock_combined_analysis_", strings['out_date'], ".xlsx"))
-
 ##################################### Current Operating - Retailers #####################################
-# 
-# operating_cols <- c("w1_perc_current_operating")
-# 
-# #Calculating medians
-# 
-# operating_medians_hromada <- raw_medians(data.list$main,operating_cols,"a7_current_hromada",c( "macroregion", "a5_current_oblast", "a6_current_raion"),num_samples = TRUE)
-# operating_medians_raion <- raw_medians(filter(operating_medians_hromada,stats=="median"),operating_cols,"a6_current_raion", c("macroregion", "a5_current_oblast"),num_samples = TRUE)
-# operating_medians_oblast <- raw_medians(filter(operating_medians_raion,stats=="median"),operating_cols,"a5_current_oblast", "macroregion",num_samples = TRUE)
-# operating_medians_region <- raw_medians(filter(operating_medians_oblast,stats=="median"),operating_cols,"macroregion",num_samples = TRUE)
-# operating_medians_national <- descriptive_stats(rename(filter(operating_medians_region, stats == "median"), "national" = "stats"),"national",operating_cols)
-# #prices_national <- medians_national %>%
-# #  ungroup() %>%
-# #  select(-national)
-# 
-# # Putting all together in one dataset
-# df_operating <- list("operating_medians_hromada" = operating_medians_hromada,
-#                     "operating_medians_raion" = operating_medians_raion,
-#                     "operating_medians_oblast" = operating_medians_oblast,
-#                     "operating_medians_region" = operating_medians_region,
-#                     "operating_medians_national" = operating_medians_national)
-# 
-# # Recoding p-codes with names
-# for (i in 1:length(df_operating)){
-#   df_operating[[i]] <- df_operating[[i]] %>%
-#     matchmaker::match_df(dictionary = recode, from = "from",
-#                          to = "to",
-#                          by = "col") %>%
-#     filter(!is.na(colnames(df_operating[[i]])[1]))
-# }
-# 
-# # Writing down to the file
-# save.dfs(df_operating, paste0("output/", "JMMI UKR Retailers Current_Operating_combined_analysis_", strings['out_date'], ".xlsx"), "_operating")
+
+# Select w1 column
+operating_cols <- data.list$main %>%
+  select("a5_current_oblast","a6_current_raion", "a7_current_hromada", "w1_perc_current_operating") %>%
+  left_join(regions, by = "a5_current_oblast") %>% na.omit()
+operating_cols <- operating_cols %>% select(macroregion, everything())
+
+
+# Replace values to the numbers
+
+operating_cols$w1_perc_current_operating <- gsub("_", "", operating_cols$w1_perc_current_operating)
+operating_cols$w1_perc_current_operating <- gsub("025", "12.500", operating_cols$w1_perc_current_operating)
+operating_cols$w1_perc_current_operating <- gsub("25", "12.500", operating_cols$w1_perc_current_operating)
+operating_cols$w1_perc_current_operating <- gsub("2550", "37.5", operating_cols$w1_perc_current_operating)
+operating_cols$w1_perc_current_operating <- gsub("5075", "62.5", operating_cols$w1_perc_current_operating)
+operating_cols$w1_perc_current_operating <- gsub("75100", "87.5", operating_cols$w1_perc_current_operating)
+operating_cols$w1_perc_current_operating <- gsub("100", "87.5", operating_cols$w1_perc_current_operating)
+operating_cols$w1_perc_current_operating <- as.numeric(operating_cols$w1_perc_current_operating)
+# Calculate mean per hromada
+
+operating_hromada <- operating_cols %>% group_by(macroregion,a5_current_oblast,a6_current_raion, a7_current_hromada) %>% 
+  summarise(w1_perc_current_operating = mean(w1_perc_current_operating)) 
+operating_hromada$w1_perc_current_operating <- round(operating_hromada$w1_perc_current_operating,4)
+operating_hromada <- left_join(operating_hromada, recode, by = c("a7_current_hromada" = "from"))
+names(operating_hromada)[names(operating_hromada) == 'to'] <- 'strata'
+w1_operating_hromada <- operating_hromada %>% ungroup() %>% select(2,3,4,6,5) 
+
+# Calculate mean per raion
+
+operating_raion <- operating_cols %>% group_by(macroregion,a5_current_oblast,a6_current_raion) %>% 
+  summarise(w1_perc_current_operating = mean(w1_perc_current_operating)) 
+operating_raion$w1_perc_current_operating <- round(operating_raion$w1_perc_current_operating,4)
+operating_raion <- left_join(operating_raion, recode, by = c("a6_current_raion" = "from"))
+names(operating_raion)[names(operating_raion) == 'to'] <- 'strata'
+w1_operating_raion <- operating_raion %>% ungroup() %>% select(2,3,5,4) 
+# Calculate mean per oblast
+
+operating_oblast <- operating_cols %>% group_by(macroregion,a5_current_oblast) %>% 
+  summarise(w1_perc_current_operating = mean(w1_perc_current_operating)) 
+operating_oblast$w1_perc_current_operating <- round(operating_oblast$w1_perc_current_operating,4)
+operating_oblast <- left_join(operating_oblast, recode, by = c("a5_current_oblast" = "from")) %>% distinct()
+names(operating_oblast)[names(operating_oblast) == 'to'] <- 'strata'
+w1_operating_oblast <- operating_oblast %>% ungroup() %>% select(2,4,3) 
+
+# Calculate mean per region
+
+operating_region <- operating_cols %>% group_by(macroregion) %>% 
+  summarise(w1_perc_current_operating = mean(w1_perc_current_operating)) 
+operating_region$w1_perc_current_operating <- round(operating_region$w1_perc_current_operating,4)
+
+w1_operating_region <- operating_region %>% ungroup() 
+
+# Calculate  mean of regions values for national level
+
+operating_national <- w1_operating_region  %>% 
+  summarise(w1_perc_current_operating = mean(w1_perc_current_operating)) %>% mutate(national = "national")
+w1_operating_national <- operating_national %>% select(national, everything())
+
+# Replace numbers to the categorical values
+
+operating_list <- list("w1_operating_hromada" = w1_operating_hromada, 
+                       "w1_operating_raion" = w1_operating_raion, 
+                       "w1_operating_oblast" = w1_operating_oblast, 
+                       "w1_operating_region" = w1_operating_region, 
+                       "w1_operating_national" = w1_operating_national)
+
+# Define a function to replace values
+replace_values_in_list <- function(df) {
+  df %>%
+    mutate(w1_perc_current_operating = case_when(
+      w1_perc_current_operating >= 0 & w1_perc_current_operating <= 25 ~ "0_25",
+      w1_perc_current_operating > 25 & w1_perc_current_operating <= 50 ~ "25_50",
+      w1_perc_current_operating > 50 & w1_perc_current_operating <= 75 ~ "50_75",
+      w1_perc_current_operating > 75 & w1_perc_current_operating <= 100 ~ "75_100",
+      TRUE ~ as.character(w1_perc_current_operating)
+    ))
+}
+
+# Apply the function to each data frame in the list
+operating_list <- lapply(operating_list, replace_values_in_list)
+
+ # Writing down to the file
+ save.dfs(operating_list, paste0("output/Retailers/", "JMMI UKR Retailers Current_Operating_combined_analysis_", strings['out_date'], ".xlsx"))
