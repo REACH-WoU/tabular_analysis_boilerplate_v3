@@ -120,6 +120,17 @@ for (i in sections){
   progress.bar.title <- as.character(Sys.time())
   pb <- tkProgressBar(progress.bar.title, paste0("[", i, "] Number of entries executed"), 0, nrow(daf.section), 0, width = 500)
   
+    ### Creating list of joint tables names
+  joint.tables.names <- data.frame(table(daf.section$join))
+  # Setting up the count for all the joint tables
+  if (!is_empty(joint.tables.names$Freq)){
+    rownames(joint.tables.names) <- joint.tables.names$Var1
+    jt.count <- joint.tables.names
+    jt.count$Freq <- 0
+    # Creating joint tables data list
+    joint.tables.list <- vector("list", length(joint.tables.names$Var1))
+    names(joint.tables.list) <- joint.tables.names$Var1
+  }
   for (r in 1:nrow(daf.section)){
     setTkProgressBar(pb, r, progress.bar.title, paste0("[", i, "] Number of entries executed: ", r, " of ", nrow(daf.section)))
     
@@ -167,9 +178,38 @@ for (i in sections){
           ungroup %>% select(-any_of("overall"))
         res <- res %>% bind_rows(res.overall) %>% distinct
       }
-      # save the xlsx
-      xlsx_name <- paste0(entry$xlsx_name, ifelse(isna(disagg.var), "", paste0("_by_", disagg.var)))
-      write_xlsx(res, paste0(params["combine_folder"],"/",xlsx_name,".xlsx"))
+      
+      # merging to joint table if necessary
+      if (is.na(entry$join)){
+        # save the xlsx
+        xlsx_name <- paste0(entry$xlsx_name, ifelse(isna(disagg.var), "", paste0("_by_", disagg.var)))
+        write_xlsx(res, paste0(params["combine_folder"],"/",xlsx_name,".xlsx"))
+      }else{
+        if (is.na(disagg.var)){         # Checking if there are disagregation variables and setting up variables to join by
+          joining_vars <- "strata"
+        }else{
+          joining_vars <- c("strata",disagg.var)
+        }
+        # Setting column names as "<function>_<question_name>"
+          colnames(res) <- c(joining_vars,paste(colnames(res)[length(joining_vars)+1:length(res)],entry$variable,sep="_"))
+        # Joining the res table to the existing joint table or creating a new one 
+        if (jt.count[entry$join,"Freq"] == 0){
+          joint.tables.list[[entry$join]] <- res
+          jt.count[entry$join,"Freq"] <- jt.count[entry$join,"Freq"]+1
+        }else{
+          joint.tables.list[[entry$join]] <- joint.tables.list[[entry$join]] %>%
+            full_join(res,by = joining_vars)
+          jt.count[entry$join,"Freq"] <- jt.count[entry$join,"Freq"]+1
+        }
+          # Write the joint table to the file if it is full
+        if (jt.count[entry$join,"Freq"] == joint.tables.names[entry$join,"Freq"]){
+          res <- joint.tables.list[[entry$join]]
+           # save the xlsx
+          xlsx_name <- paste0(paste(entry$join,"strata","_"), ifelse(isna(disagg.var), "", paste0("_by_", disagg.var)))
+          write_xlsx(res, paste0(params["combine_folder"],"/",xlsx_name,".xlsx"))
+ 
+        }
+      }    
     
       subch(datatable(res, option = tableFormat))
     }
